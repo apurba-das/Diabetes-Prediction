@@ -1,4 +1,4 @@
-# Diabletes-Prediction
+# Diabetes-Prediction
 
 The submission for this project contains three files:
 
