@@ -1,6 +1,6 @@
 # Diabletes-Prediction
 
-The submission for this project is three files:
+The submission for this project contains three files:
 
 A. The report in PDF format
 
