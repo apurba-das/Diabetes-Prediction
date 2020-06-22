@@ -16,7 +16,7 @@ if(!require(ggcorrplot)) install.packages("ggcorrplot", repos = "http://cran.us.
 library(devtools)
 
 # Load the Diabetes data set from my github account
-diabetes_data <- read.table("https://raw.githubusercontent.com/apurba-das/Diabletes-Prediction/master/pima-indians-diabetes.data.txt", 
+diabetes_data <- read.table("https://raw.githubusercontent.com/apurba-das/Diabetes-Prediction/master/pima-indians-diabetes.data.txt", 
                           header = FALSE, 
                           sep = ",")
 
