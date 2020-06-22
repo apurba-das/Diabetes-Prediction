@@ -1,0 +1,453 @@
+---
+title: "Harvardx Capstone Diabetes Prediction Project"
+author: "Apurba Das"
+date: "5/25/2020"
+output:  
+  pdf_document:
+    toc: true
+    toc_depth: 4
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+\pagebreak
+# Introduction
+
+This project is the a part of Harvardx's Data Science course and serves as the Choose Your Own Capstone project. This section describes the dataset and variables, and summarizes the goal of the project and key steps that were performed to achieve it.
+
+## Overview
+
+The aim of this project is to create a classification or prediction system based on several independent diagnostic and medical factors that predicts if a patient has diabetes or not using the Pima Indians Diabetes dataset. As defined by the National Institute of Diabetes and Digestive and Kidney Diseases (NIDDK), diabetes is a disease that occurs when your blood glucose, also called blood sugar, is too high. Blood glucose is your main source of energy and comes from the food you eat. Insulin, a hormone made by the pancreas, helps glucose from food get into your cells to be used for energy. Of all the types of diabetes, the most common types are type 1, type 2, and gestational diabetes. This project contains the different methods used to create several models to predict diabetes.
+
+## Procedure
+
+Firstly, the Diabetes data is downloaded and datasets are created. Then, we develop algorithms using the training data set. For a final test of these algorithms, prediction of whether a patient is suffering from diabetes or not is done in the testing (acts as validation) set as if they were unknown. Confusion Matrix and primarily, sensitivity and accuracy will be used to evaluate how close our predictions are to the true values in the validation set.
+
+As we train multiple machine learning algorithms using the inputs in one subset to predict if a patient is suffering from diabetes in the validation set, we also analyze and understand the dataset along the way.
+
+The final goal is to come up with multiple machine learning algorithms and understand the advanced techniques used in them while building the models.
+
+## Dataset and variables
+
+The dataset used is the Pima Indians Diabetes dataset which is originally from the National Institute of Diabetes and Digestive and Kidney Diseases. With this dataset which a subset of a much larger database, several constraints were placed on the selection of these instances. In particular, all patients here are females at least 21 years old of Pima Indian heritage.
+
+Overall, this data set consists of 768 observations of 9 variables: 8 variables which will be used as model predictors (number of times pregnant, plasma glucose concentration, diastolic blood pressure (mm Hg), triceps skin fold thickness (in mm), 2-hr serum insulin measure, body mass index, a diabetes pedigree function, and age) and 1 outcome variable (whether or not the patient has diabetes). This diabetes dataset is automatically downloaded in our code from our GitHub repo.
+
+```{r, echo = TRUE, eval = TRUE}
+##################################
+# Load data and required packages
+##################################
+
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+if(!require(dplyr)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
+if(!require(rpart.plot)) install.packages("rpart.plot", repos = "http://cran.us.r-project.org")
+if(!require(gbm)) install.packages("gbm", repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+if(!require(devtools)) install.packages("devtools", repos = "http://cran.us.r-project.org")
+if(!require(rpart)) install.packages("rpart", repos = "http://cran.us.r-project.org")
+if(!require(ggcorrplot)) install.packages("ggcorrplot", repos = "http://cran.us.r-project.org")
+library(devtools)
+
+# Load the Diabetes data set from my github account
+diabetes_data <- read.table("https://raw.githubusercontent.com/apurba-das/Diabletes-Prediction/master/pima-indians-diabetes.data.txt", 
+                          header = FALSE, 
+                          sep = ",")
+
+colnames(diabetes_data) <- c("Pregnancies",
+                            "Glucose",
+                            "BloodPressure",
+                            "SkinThickness",
+                            "Insulin",
+                            "BMI",
+                            "DiabetesPedigreeFunction",
+                            "Age",
+                            "Outcome")
+
+diabetes_data$Outcome <- ifelse(diabetes_data$Outcome == "1", "Diabetes",
+                          ifelse(diabetes_data$Outcome == "0", "NoDiabetes", NA))
+
+```
+
+\newpage
+# Methods/ Analysis
+
+This section documents the methods/ analysis techniques used and presents the findings, along with supporting statistics and figures.
+
+## Data Exploration
+
+We start by exploring the data to increase our understanding of the dataset.
+
+First, let's see the number of missing data/ NAs in the dataset.
+
+```{r}
+
+diabetes_data[diabetes_data == "?"] <- NA
+
+# how many NAs are in the data
+length(which(is.na(diabetes_data)))
+
+```
+
+There are no NAs in the dataset, so there is no need to remove or impute any rows.
+
+Now, let's try to understand the data a little more.
+
+```{r}
+
+# See the initial few rows of the data
+head(diabetes_data)
+
+# Understand the diabetes data better
+str(diabetes_data)
+
+```
+
+Each row represents a potential diabetes patient record.
+
+We can see the number of patients affected with diabetes and those without it:
+
+```{r}
+diabetes_data$Outcome <- as.factor(diabetes_data$Outcome)
+
+summary(diabetes_data$Outcome)
+
+library(ggplot2)
+
+ggplot(diabetes_data, aes(x = Outcome, fill = Outcome)) +
+  geom_bar()
+
+```
+
+We see that our data is unbalanced with majority of the cases as false (500 out of 768). Most machine learning classification algorithms are sensitive to such imbalance. If we consider an even higher or extreme level of imbalance where say 95% of the patients do not have diabetes then even if our model simply predicts false for each case, it'll still have a very high accuracy which is extremely dangereous. Hence, there is a need to create an optimal model that would result in a high accuracy level combinated with high sensitivity i.e., a low rate of false-negatives.
+
+### Correlation Matrix
+
+We start our understanding and exploration of the features using the correlation matrix.
+
+```{r}
+# Compute correlation matrix
+data_corr <- round(cor(diabetes_data[1:8]),1)
+data_corr
+
+# Plot the correlation matrix
+library(ggcorrplot)
+ggcorrplot(data_corr)
+```
+
+From the correlation matrix, we find that there is no strong correlation between any of the diagnosed factors and they are pretty much independent. Hence we do not have to remove any of the features as none of them are redundant.
+
+### Feature Importance
+
+We further try to understand the importance of each feature by plotting the graphs of the features against the diabetes outcome.
+
+```{r}
+
+#Understanding the features
+library(tidyr)
+
+gather(diabetes_data, x, y, Pregnancies:Age) %>%
+  ggplot(aes(x = y, color = Outcome, fill = Outcome)) +
+    geom_density(alpha = 0.3) +
+    facet_wrap( ~ x, scales = "free", ncol = 3)
+```
+
+We infer from the graphs that Glucose level seems to be the most influential feature in determining if a person is diabetic or not
+
+### Split the Dataset
+
+Before starting our modeling, we'll split the data into training (train_data) and testing (test_data) using a 90/10 split as that is considered a good split by experts. The testing data is not used for training the algorithm and is used for evaluating the accuracy of the algorithms. The testing set is chosen as 10% of the diabetes data so that our analysis can take place with the larger dataset of 90% of the diabetes data.
+
+```{r}
+library(caret)
+set.seed(42) # for reproducibility
+test_index <- createDataPartition(diabetes_data$Outcome, p = 0.9, list = FALSE)
+train_data <- diabetes_data[test_index, ]
+test_data  <- diabetes_data[-test_index, ]
+```
+
+To ascertain that we have a good split, we check whether the distribution of feature values is comparable between training, validation and test datasets
+
+```{r}
+library(dplyr)
+
+rbind(data.frame(group = "train", train_data),
+      data.frame(group = "test", test_data)) %>%
+  gather(x, y, Pregnancies:Age) %>%
+  ggplot(aes(x = y, color = group, fill = group)) +
+    geom_density(alpha = 0.3) +
+    facet_wrap( ~ x, scales = "free", ncol = 3)
+
+```
+
+Since the distribution between the two is similar, we can continue with the modeling part.
+
+## Modeling
+
+We use several different algorithms for building our models beginning with Logistic Regression followed by K-Nearest Neighbors, Decision trees, Random Forest and Gradient Boosting.
+
+The parameters of the below variable ComputationControl are those that we use for controlling the computation of train function in most of the models that we build.
+
+```{r}
+ComputationControl <- trainControl(method="repeatedcv",    
+                           number = 15, 
+                           repeats = 10,
+                           classProbs = TRUE,
+                           summaryFunction = twoClassSummary)
+```
+
+\newpage
+### Logistic Regression
+
+We start with Logistic Regression which is the most commonly used method for binary classification and prediction problems.
+
+```{r}
+
+# Logistic Regression 
+
+model_reg <- caret::train(Outcome ~ .,
+                          data = train_data,
+                          method = "glm",
+                          metric = "ROC", 
+                          preProcess = c("scale", "center"),
+                          trControl =  ComputationControl)
+# Prediction
+prediction_reg<- predict(model_reg, test_data)
+
+# Confusion matrix
+confusionMat_reg <- confusionMatrix(prediction_reg, test_data$Outcome)
+
+confusionMat_reg
+
+# Accuracy of model
+accuracy_reg <- confusionMat_reg$overall['Accuracy']
+```
+
+As we go along, there will be a need to compare different approaches. Hence, starting by creating a results table with this approach:
+```{r}
+accuracy_results <- tibble(Method = "Logistic Regression", Accuracy = accuracy_reg)
+```
+
+Viewing the results obtained so far:
+```{r}
+accuracy_results %>% knitr::kable()
+```
+
+Now, we make a plot to understand which were the most important variables or factors for our regression model.
+
+```{r}
+# Plot of top five most important variables
+plot(varImp(model_reg), top=5, main="Top variables - Logistic Regression")
+```
+
+\newpage
+### KNN (K Nearest Neighbor)
+
+The general idea behind KNN is to classify patients by their similarity to other patients. We are going to build our next model based on KNN and see which are the top five most important variables according to this method.
+ 
+```{r}
+
+# KNN
+
+model_knn <- caret::train(Outcome ~ .,
+                             data = train_data,
+                             method = "knn",
+                             metric = "ROC", 
+                             preProcess = NULL,
+                             trControl =  ComputationControl)
+
+# Prediction
+prediction_knn<- predict(model_knn, test_data)
+
+# Confusion matrix
+confusionMat_knn <- confusionMatrix(prediction_knn, test_data$Outcome)
+
+confusionMat_knn
+
+# Accuracy of model
+accuracy_knn <- confusionMat_knn$overall['Accuracy']
+
+accuracy_results <- add_row(accuracy_results, Method = "KNN", Accuracy = accuracy_knn)
+```
+
+Viewing the results obtained so far:
+```{r}
+accuracy_results %>% knitr::kable()
+```
+
+Plotting the top five most important variables for this model:
+
+```{r}
+# Plot of top five most important variables
+plot(varImp(model_knn), top=5, main="Top variables - KNN")
+```
+
+We see that there is a difference in the variables as KNN gives importance to Age also but for logistic regression, Blood Pressure was more important.
+
+\newpage
+### Decision tree
+
+Our next classification model will use decision tree by constructing nodes at which data is separated and terminating in leaves at which we find the model's assigned class.
+
+```{r}
+
+# Decision Tree
+
+library(rpart)
+library(rpart.plot)
+
+model_dt <- rpart(Outcome ~ .,
+            data = train_data,
+            method = "class",
+            control = rpart.control(xval = 10, 
+                                    minbucket = 2, 
+                                    cp = 0), 
+             parms = list(split = "information"))
+
+# Plot the tree
+rpart.plot(model_dt, extra = 100)
+
+# Prediction
+prediction_dt<- predict(model_dt, test_data, type = "class")
+
+# Confusion matrix
+confusionMat_dt <- confusionMatrix(prediction_dt, test_data$Outcome)
+
+confusionMat_dt
+
+# Accuracy of model
+accuracy_dt <- confusionMat_dt$overall['Accuracy']
+
+accuracy_results <- add_row(accuracy_results, Method = "Decision Tree", Accuracy = accuracy_dt)
+```
+
+Viewing the results obtained so far:
+```{r}
+accuracy_results %>% knitr::kable()
+```
+
+\newpage
+### Random Forest
+
+Our next model is built using Random Forest which aggregates multiple decorrelated decision trees in order to yield a prediction.
+
+```{r}
+
+# Random Forest 
+
+model_rf <- caret::train(Outcome ~ .,
+                         data = train_data,
+                         method = "rf",
+                         metric = "ROC", 
+                         preProcess = c("scale", "center"),
+                         trControl = ComputationControl)
+
+# Prediction
+prediction_rf<- predict(model_rf, test_data)
+
+# Confusion matrix
+confusionMat_rf <- confusionMatrix(prediction_rf, test_data$Outcome)
+
+confusionMat_rf
+
+# Accuracy of model
+accuracy_rf <- confusionMat_rf$overall['Accuracy']
+
+accuracy_results <- add_row(accuracy_results, Method = "Random Forest", Accuracy = accuracy_rf)
+```
+
+Viewing the results obtained so far:
+```{r}
+accuracy_results %>% knitr::kable()
+```
+
+Plot of the top five most important variables for random forest:
+
+```{r}
+# Plot of top five most important variables
+plot(varImp(model_rf), top=5, main="Top variables - Random Forest")
+```
+
+\newpage
+### Gradient Boosting
+
+We next use Gradient Boosting which ia an ensemble learning method that trains many models in a gradual, additive and sequential manner.
+
+```{r}
+
+# Gradient Boosting
+
+model_gb <- caret::train(Outcome ~ .,
+                         data = train_data,
+                         method = "gbm",
+                         metric = "ROC", 
+                         trControl = ComputationControl,
+                         verbose = 0)
+
+# Prediction
+prediction_gb<- predict(model_gb, test_data)
+
+# Confusion matrix
+confusionMat_gb <- confusionMatrix(prediction_gb, test_data$Outcome)
+
+confusionMat_gb
+
+# Accuracy of model
+accuracy_gb <- confusionMat_gb$overall['Accuracy']
+
+accuracy_results <- add_row(accuracy_results, Method = "Gradient Boosting", Accuracy = accuracy_gb)
+```
+
+Viewing the results obtained so far:
+```{r}
+accuracy_results %>% knitr::kable()
+```
+
+Plot of top five most important variables for this model:
+
+```{r}
+# Plot of top five most important variables
+plot(varImp(model_gb), top=5, main="Top variables - Gradient boost")
+```
+
+\newpage
+# Results
+
+These are the final accuracy values of all the models constructed:
+
+```{r}
+accuracy_results %>% knitr::kable()
+```
+
+From the accuracy results, the best performing model is random forest. Now, we re-check the sensitivity of the Random Forest model using its confusion matrix.
+
+```{r}
+
+# Random Forest Confusion matrix
+
+confusionMat_rf
+```
+
+If we go back and check the sensitivity of the other models, we find that Random Forest has the highest sensitivity also.
+
+# Conclusion
+
+We have successfully constructed multiple models for our diabetes prediction system. Among the models designed, the Random Forest model gives the highest accuracy and sensitivity of 0.8289474 and 0.6923 respectively. Therefore, we conclude that Random Forest performs best among all the models constructed for this particular dataset. 
+
+As is the case with any disease related dataset, there is always a limitation of having lesser number of positive cases and hence an imbalance. For further improvement, there are methods that can be used to balance out the dataset or we can pick a much larger dataset that would have many more cases, both positives and negatives.
+
+Also, we see that in all the models glucose level is the topmost variable and we can identify this directly from the feature importance graphs that we had plotted earlier which further strengthens the need to understand the features in a dataset and its impact on the results before starting any modeling.
+
+# References
+
+1. https://rafalab.github.io/dsbook
+
+2. https://towardsdatascience.com
+
+3. https://www.kaggle.com
+
+
+
